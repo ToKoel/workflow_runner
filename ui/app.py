@@ -22,11 +22,13 @@ class WorkflowTUI(App):
         "q", "quit", "Quit", show=True)]
     CSS = """
     Grid { grid-size: 2; grid-columns: 1fr 2fr; height: 1fr; }
-    .box { border: solid green; padding: 1; margin: 1; height: 100%; }
-    #timer-layout { height: auto; align: center middle; margin-bottom: 1; }
+    .box { border: solid round green; padding: 1; margin: 1; height: 100%; }
+    #wf_list { margin-bottom: 1; }
+    #timer-layout { height: auto; align: left middle; margin-bottom: 1; }
     #save_settings { margin-bottom: 1; }
     #elapsed-time { margin-left: 2; color: $accent; }
-    #progress-container { align: center top; }
+    #progress_container { align: left top; }
+    #progress_bar { margin-left: 1; }
     #log_output { height: 30%; align: center top; margin-bottom: 1; }
     #output_box { align: center top; }
     #result_table { height: 60%; align: center top; }
@@ -87,6 +89,9 @@ class WorkflowTUI(App):
         yield Header()
         yield Grid(
             Vertical(
+                Label("--- Available Workflows ---"),
+                ListView(*[ListItem(Label(name), id=name)
+                           for name in WorkflowRegistry.get_all().keys()], id="wf_list"),
                 Label("--- Global Settings ---"),
                 Label("Project Directory:"),
                 Input(value=self.settings["project_dir"], id="project_dir"),
@@ -95,10 +100,6 @@ class WorkflowTUI(App):
                 Label("Target Ams Net Id:"),
                 Input(value=self.settings["ams_net_id"], id="ams_net_id"),
                 Button("Save Settings", variant="success", id="save_settings"),
-                Label("--- Available Workflows ---"),
-                ListView(*[ListItem(Label(name), id=name)
-                           for name in WorkflowRegistry.get_all().keys()], id="wf_list"),
-                Button("Run Selected", variant="primary", id="run_wf"),
                 classes="box"
             ),
             Vertical(
@@ -134,14 +135,6 @@ class WorkflowTUI(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save_settings":
             self.save_settings()
-        elif event.button.id == "run_wf":
-            list_view = self.query_one("#wf_list", ListView)
-            selected_item = list_view.highlighted_child
-
-            if selected_item:
-                self.is_running = True
-                self.run_workflow_async(selected_item.id)
-                self.continuous_timer_loop(time.time())
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         selected_item = event.item
@@ -168,6 +161,8 @@ class WorkflowTUI(App):
         try:
             ctx = self.engine.run_chain(
                 [workflow_name], progress_callback=progress_updater)
+            if not ctx.success:
+                p_label.update("[red]Workflow failed[/]")
 
             if ctx.output_table:
                 self.call_from_thread(

@@ -24,9 +24,21 @@ def step_two(ctx: WorkflowContext):
         columns=["Item Name", "Status"], rows=rows)
 
 
+def failing_step(ctx: WorkflowContext):
+    raise ValueError("error here")
+
+
 @WorkflowRegistry.register(
     name="Process_Data",
     description="Fetches data and compiles a status report"
 )
 def process_data_workflow():
     return [step_one, step_two]
+
+
+@WorkflowRegistry.register(
+    name="Process_Data_2",
+    description="Fetches data and compiles a status report"
+)
+def process_data_workflow2():
+    return [step_one, failing_step, step_two]
