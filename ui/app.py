@@ -116,6 +116,25 @@ class WorkflowTUI(App):
 
         logging.getLogger("textual").setLevel(logging.WARNING)
 
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        """Fires automatically when a user clicks on a column header."""
+        table = event.data_table
+        column_key = event.column_key
+
+        data_rows = [table.get_row(row_key) for row_key in table.rows.keys()]
+        column_index = list(table.columns.keys()).index(column_key)
+        current_sort = getattr(table, "_last_sorted_col", None)
+
+        if current_sort == (column_key, "asc"):
+            data_rows.sort(key=lambda row: row[column_index], reverse=True)
+            table._last_sorted_col = (column_key, "desc")
+        else:
+            data_rows.sort(key=lambda row: row[column_index])
+            table._last_sorted_col = (column_key, "asc")
+
+        table.clear(columns=False)
+        table.add_rows(data_rows)
+
     def action_focus_box(self, location: str) -> None:
         if location == "wf_list":
             self.query_one("#wf_list", ListView).focus()
