@@ -10,6 +10,7 @@ from textual.reactive import reactive
 import logging
 from ui.richlog_handler import TextualRichLogHandler
 from textual.binding import Binding
+from textual.events import Key
 
 from core.engine import WorkflowEngine
 from core.registry import WorkflowRegistry
@@ -17,23 +18,67 @@ from core.registry import WorkflowRegistry
 SETTINGS_FILE = "settings.json"
 
 
+class WorkflowInput(Input):
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            event.prevent_default()
+            event.stop()
+            self.screen.focus_next()
+
+
 class WorkflowTUI(App):
-    BINDINGS = [("escape", "quit", "Quit"), Binding(
-        "q", "quit", "Quit", show=True)]
+    BINDINGS = [("escape", "quit", "Quit"),
+                Binding("q", "quit", "Quit", show=True),
+                Binding("1", "focus_box('wf_list')",
+                        "Focus Workflows", show=False),
+                Binding("2", "focus_box('settings')",
+                        "Focus Settings", show=False),
+                Binding("3", "focus_box('logs')",
+                        "Focus Settings", show=False),
+                Binding("4", "focus_box('results')",
+                        "Focus Settings", show=False),
+                ]
     CSS = """
     #outer_grid { grid-size: 2; grid-columns: 1fr 3fr; height: 1fr; }
-    #settings_grid { grid-size: 1; grid-columns: 1fr; height: 1fr; }
-    #wf_list { margin-bottom: 1; border: solid round green; padding: 1; background: transparent;}
-    #settings { margin-bottom: 1; border: solid round green; padding: 1;}
-    #output_box { margin-bottom: 1; border: solid round green; padding: 1;}
+    #settings_grid { grid-size: 1;
+                     grid-columns: 1fr;
+                     height: 1fr; 
+                     }
+    .box {
+               border: solid round green;
+               padding: 1;
+               background: transparent;
+        }
+    .box:focus-within {
+        border: solid round $accent;
+        }
+
+    #wf_list { margin-bottom: 1; }
     #timer-layout { height: auto; align: left middle; margin-bottom: 1; }
-    #save_settings { margin-bottom: 1; }
+    #save_settings {
+    width: 100%;
+    margin-top: 1;
+    height: 3;
+    background: transparent;
+    color: $success;
+    border: solid $success;
+    text-style: bold;
+}
+
+#save_settings:hover {
+    background: $success 20%;
+    color: #ffffff;
+}
+
+#save_settings:focus {
+    border: double $accent;
+}
     #elapsed-time { margin-left: 2; color: $accent; }
     #progress_container { align: left top; }
     #progress_bar { margin-left: 1; }
-    #log_output { height: 30%; align: center top; margin-bottom: 1; background: transparent; border:solid round $accent; scrollbar-size: 1 1;}
+    #log_output { height: 30%; align: center top; margin-bottom: 1; scrollbar-size: 1 1;}
     #output_box { align: center top; }
-    #result_table { height: 60%; align: center top; background:transparent;border:solid round $accent; scrollbar-size: 1 1;}
+    #result_table { height: 60%; align: center top; scrollbar-size: 1 1;}
     Input { margin-bottom: 1;}
     Footer { dock: bottom; width: 100%; }
     """
@@ -48,14 +93,14 @@ class WorkflowTUI(App):
 
     def on_mount(self):
         wf_list = self.query_one("#wf_list", ListView)
-        wf_list.border_title = "Workflows"
+        wf_list.border_title = "[1]-Workflows"
         settings = self.query_one("#settings", Vertical)
-        settings.border_title = "Settings"
+        settings.border_title = "[2]-Settings"
         table = self.query_one("#result_table", DataTable)
-        table.border_title = "Results"
+        table.border_title = "[4]-Results"
 
         log_window = self.query_one("#log_output", RichLog)
-        log_window.border_title = "Logs"
+        log_window.border_title = "[3]-Logs"
 
         log_handler = TextualRichLogHandler(log_window, self)
 
@@ -70,6 +115,16 @@ class WorkflowTUI(App):
         root_logger.addHandler(log_handler)
 
         logging.getLogger("textual").setLevel(logging.WARNING)
+
+    def action_focus_box(self, location: str) -> None:
+        if location == "wf_list":
+            self.query_one("#wf_list", ListView).focus()
+        if location == "settings":
+            self.query_one("#project_dir", WorkflowInput).focus()
+        if location == "logs":
+            self.query_one("#log_output", RichLog).focus()
+        if location == "results":
+            self.query_one("#result_table", DataTable).focus()
 
     def load_settings(self):
         if os.path.exists(SETTINGS_FILE):
@@ -100,18 +155,21 @@ class WorkflowTUI(App):
         yield Grid(
             Grid(
                 ListView(*[ListItem(Label(name), id=name)
-                           for name in WorkflowRegistry.get_all().keys()], id="wf_list"),
+                           for name in WorkflowRegistry.get_all().keys()], id="wf_list",
+                         classes="box"),
                 Vertical(
-                    Label("Project Directory:"),
-                    Input(
+                    Label("Project Directory:", id="project_dir_label"),
+                    WorkflowInput(
                         value=self.settings["project_dir"], id="project_dir"),
                     Label("Output Directory:"),
-                    Input(value=self.settings["output_dir"], id="output_dir"),
+                    WorkflowInput(
+                        value=self.settings["output_dir"], id="output_dir"),
                     Label("Target Ams Net Id:"),
-                    Input(value=self.settings["ams_net_id"], id="ams_net_id"),
+                    WorkflowInput(
+                        value=self.settings["ams_net_id"], id="ams_net_id"),
                     Button("Save Settings", variant="success",
                            id="save_settings"),
-                    id="settings"
+                    id="settings", classes="box"
                 ),
                 id="settings_grid"
             ),
@@ -127,9 +185,9 @@ class WorkflowTUI(App):
                     id="progress_container"
                 ),
                 RichLog(id="log_output", highlight=True,
-                        markup=True),
-                DataTable(id="result_table"),
-                id="output_box"
+                        markup=True, classes="box"),
+                DataTable(id="result_table", classes="box"),
+                id="output_box", classes="box"
             ),
             id="outer_grid"
         )
@@ -185,5 +243,6 @@ class WorkflowTUI(App):
                 t = ctx.output_table
                 self.call_from_thread(table_widget.add_columns, *t.columns)
                 self.call_from_thread(table_widget.add_rows, t.rows)
+                table_widget.focus()
         finally:
             self.call_from_thread(setattr, self, "is_running", False)
