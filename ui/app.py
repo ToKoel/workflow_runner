@@ -31,9 +31,9 @@ class WorkflowTUI(App):
     #elapsed-time { margin-left: 2; color: $accent; }
     #progress_container { align: left top; }
     #progress_bar { margin-left: 1; }
-    #log_output { height: 30%; align: center top; margin-bottom: 1; background: transparent; border:solid round $accent}
+    #log_output { height: 30%; align: center top; margin-bottom: 1; background: transparent; border:solid round $accent; scrollbar-size: 1 1;}
     #output_box { align: center top; }
-    #result_table { height: 60%; align: center top; background:transparent;border:solid round $accent;}
+    #result_table { height: 60%; align: center top; background:transparent;border:solid round $accent; scrollbar-size: 1 1;}
     Input { margin-bottom: 1;}
     Footer { dock: bottom; width: 100%; }
     """
