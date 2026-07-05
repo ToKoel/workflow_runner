@@ -49,5 +49,5 @@ class WorkflowEngine:
                     ctx.success = False
                     break
 
-        ctx.update_progress("Finished", 100.0)
+        ctx.update_progress(f"Finished {workflow.name}", 100.0)
         return ctx

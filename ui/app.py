@@ -21,17 +21,19 @@ class WorkflowTUI(App):
     BINDINGS = [("escape", "quit", "Quit"), Binding(
         "q", "quit", "Quit", show=True)]
     CSS = """
-    Grid { grid-size: 2; grid-columns: 1fr 2fr; height: 1fr; }
-    .box { border: solid round green; padding: 1; margin: 1; height: 100%; }
-    #wf_list { margin-bottom: 1; }
+    #outer_grid { grid-size: 2; grid-columns: 1fr 3fr; height: 1fr; }
+    #settings_grid { grid-size: 1; grid-columns: 1fr; height: 1fr; }
+    #wf_list { margin-bottom: 1; border: solid round green; padding: 1; background: transparent;}
+    #settings { margin-bottom: 1; border: solid round green; padding: 1;}
+    #output_box { margin-bottom: 1; border: solid round green; padding: 1;}
     #timer-layout { height: auto; align: left middle; margin-bottom: 1; }
     #save_settings { margin-bottom: 1; }
     #elapsed-time { margin-left: 2; color: $accent; }
     #progress_container { align: left top; }
     #progress_bar { margin-left: 1; }
-    #log_output { height: 30%; align: center top; margin-bottom: 1; }
+    #log_output { height: 30%; align: center top; margin-bottom: 1; background: transparent; border:solid round $accent}
     #output_box { align: center top; }
-    #result_table { height: 60%; align: center top; }
+    #result_table { height: 60%; align: center top; background:transparent;border:solid round $accent;}
     Input { margin-bottom: 1;}
     Footer { dock: bottom; width: 100%; }
     """
@@ -45,7 +47,15 @@ class WorkflowTUI(App):
         self.engine.load_plugins(self.plugin_dir)
 
     def on_mount(self):
+        wf_list = self.query_one("#wf_list", ListView)
+        wf_list.border_title = "Workflows"
+        settings = self.query_one("#settings", Vertical)
+        settings.border_title = "Settings"
+        table = self.query_one("#result_table", DataTable)
+        table.border_title = "Results"
+
         log_window = self.query_one("#log_output", RichLog)
+        log_window.border_title = "Logs"
 
         log_handler = TextualRichLogHandler(log_window, self)
 
@@ -88,19 +98,22 @@ class WorkflowTUI(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Grid(
-            Vertical(
-                Label("--- Available Workflows ---"),
+            Grid(
                 ListView(*[ListItem(Label(name), id=name)
                            for name in WorkflowRegistry.get_all().keys()], id="wf_list"),
-                Label("--- Global Settings ---"),
-                Label("Project Directory:"),
-                Input(value=self.settings["project_dir"], id="project_dir"),
-                Label("Output Directory:"),
-                Input(value=self.settings["output_dir"], id="output_dir"),
-                Label("Target Ams Net Id:"),
-                Input(value=self.settings["ams_net_id"], id="ams_net_id"),
-                Button("Save Settings", variant="success", id="save_settings"),
-                classes="box"
+                Vertical(
+                    Label("Project Directory:"),
+                    Input(
+                        value=self.settings["project_dir"], id="project_dir"),
+                    Label("Output Directory:"),
+                    Input(value=self.settings["output_dir"], id="output_dir"),
+                    Label("Target Ams Net Id:"),
+                    Input(value=self.settings["ams_net_id"], id="ams_net_id"),
+                    Button("Save Settings", variant="success",
+                           id="save_settings"),
+                    id="settings"
+                ),
+                id="settings_grid"
             ),
             Vertical(
                 Vertical(
@@ -116,9 +129,9 @@ class WorkflowTUI(App):
                 RichLog(id="log_output", highlight=True,
                         markup=True),
                 DataTable(id="result_table"),
-                classes="box",
                 id="output_box"
-            )
+            ),
+            id="outer_grid"
         )
         yield Footer()
 
