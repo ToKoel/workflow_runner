@@ -1,4 +1,10 @@
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar, Type
+from core.settings import get_settings
+from contextvars import ContextVar
+
+current_context: ContextVar["WorkflowContext"] = ContextVar("current_context")
+
+T = TypeVar('T')
 
 
 class WorkflowTable:
@@ -8,11 +14,23 @@ class WorkflowTable:
 
 
 class WorkflowContext:
-    def __init__(self, global_settings: dict[str, Any]):
-        self.settings = global_settings
-        self.data: dict[str, Any] = {}
+    def __init__(self, data: T = None):
+        self.settings = get_settings()
+        self.data: T = data
         self.output_table: Optional[WorkflowTable] = None
         self.success: bool = True
 
     def update_progress(self, step_name: str, percentage: float):
         pass
+
+
+def get_data(data_type: Type[T]) -> T:
+    ctx = current_context.get()
+    return ctx.data
+
+
+def get_ctx() -> WorkflowContext:
+    try:
+        return current_context.get()
+    except LookupError:
+        raise RuntimeError("No active workflow context found")

@@ -3,15 +3,9 @@ import os
 import json
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
 from rich.console import Console
-from ui.app import WorkflowTUI, SETTINGS_FILE
+from ui.app import WorkflowTUI
 from core.engine import WorkflowEngine
-
-
-def load_settings():
-    if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
-    return {"api_key": "", "output_dir": "./output"}
+from core.settings import get_settings
 
 
 def main():
@@ -34,7 +28,7 @@ def main():
     elif args.run:
         console = Console()
 
-        settings = load_settings()
+        settings = get_settings().load_settings()
         engine = WorkflowEngine(settings)
         engine.load_plugins(args.plugins)
 

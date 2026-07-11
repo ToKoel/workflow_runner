@@ -1,5 +1,5 @@
 import json
-import os
+from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, ListView, ListItem, Label, Input, ProgressBar, DataTable, RichLog
 from textual.containers import Horizontal, Vertical, Grid
@@ -14,8 +14,7 @@ from textual.events import Key
 
 from core.engine import WorkflowEngine
 from core.registry import WorkflowRegistry
-
-SETTINGS_FILE = "settings.json"
+from core.settings import get_settings
 
 
 class WorkflowInput(Input):
@@ -87,9 +86,8 @@ class WorkflowTUI(App):
     def __init__(self, plugin_dir: str):
         super().__init__()
         self.plugin_dir = plugin_dir
-        self.settings = self.load_settings()
-        self.engine = WorkflowEngine(self.settings)
-        self.engine.load_plugins(self.plugin_dir)
+        self.engine = WorkflowEngine()
+        self.engine.load_plugins(Path(self.plugin_dir))
 
     def on_mount(self):
         wf_list = self.query_one("#wf_list", ListView)
@@ -145,28 +143,14 @@ class WorkflowTUI(App):
         if location == "results":
             self.query_one("#result_table", DataTable).focus()
 
-    def load_settings(self):
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, "r") as f:
-                settings = json.load(f)
-                if "project_dir" not in settings.keys():
-                    settings["project_dir"] = ""
-                if "output_dir" not in settings.keys():
-                    settings["output_dir"] = ""
-                if "ams_net_id" not in settings.keys():
-                    settings["ams_net_id"] = ""
-                return settings
-        return {"project_dir": "", "output_dir": "./output", "ams_net_id": ""}
-
     def save_settings(self):
-        self.settings["project_dir"] = self.query_one(
-            "#project_dir", Input).value
-        self.settings["ams_net_id"] = self.query_one(
+        self.settings.project_dir = Path(
+            self.query_one("#project_dir", Input).value)
+        self.settings.output_dir = Path(
+            self.query_one("#output_dir", Input).value)
+        self.settings.ams_net_id = self.query_one(
             "#ams_net_id", Input).value
-        self.settings["output_dir"] = self.query_one(
-            "#output_dir", Input).value
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(self.settings, f, indent=4)
+        self.settings.save_settings()
         self.notify("Settings Saved!")
 
     def compose(self) -> ComposeResult:
@@ -179,13 +163,13 @@ class WorkflowTUI(App):
                 Vertical(
                     Label("Project Directory:", id="project_dir_label"),
                     WorkflowInput(
-                        value=self.settings["project_dir"], id="project_dir"),
+                        value=f"{get_settings().project_dir}", id="project_dir"),
                     Label("Output Directory:"),
                     WorkflowInput(
-                        value=self.settings["output_dir"], id="output_dir"),
+                        value=f"{get_settings().output_dir}", id="output_dir"),
                     Label("Target Ams Net Id:"),
                     WorkflowInput(
-                        value=self.settings["ams_net_id"], id="ams_net_id"),
+                        value=get_settings().ams_net_id, id="ams_net_id"),
                     Button("Save Settings", variant="success",
                            id="save_settings"),
                     id="settings", classes="box"
@@ -212,9 +196,8 @@ class WorkflowTUI(App):
         )
         yield Footer()
 
-    @work(exclusive=True, thread=True)
+    @work(thread=True)
     async def continuous_timer_loop(self, start_time: float) -> None:
-        """Runs directly on the main async event loop, forcing visual updates."""
         time_label = self.query_one("#elapsed-time", Label)
         while self.is_running:
             elapsed = int(time.time() - start_time)
@@ -234,7 +217,7 @@ class WorkflowTUI(App):
             self.continuous_timer_loop(time.time())
             self.run_workflow_async(selected_item.id)
 
-    @work(exclusive=True, thread=True)
+    @work(thread=True)
     def run_workflow_async(self, workflow_name: str) -> None:
         p_bar = self.query_one("#progress_bar", ProgressBar)
         p_label = self.query_one("#progress_label", Label)
