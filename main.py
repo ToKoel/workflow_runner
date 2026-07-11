@@ -22,13 +22,12 @@ def main():
     args = parser.parse_args()
 
     if args.ui:
-        # Launch Textual interface
         app = WorkflowTUI(plugin_dir=args.plugins)
         app.run()
     elif args.run:
         console = Console()
 
-        settings = get_settings().load_settings()
+        settings = get_settings()
         engine = WorkflowEngine(settings)
         engine.load_plugins(args.plugins)
 
