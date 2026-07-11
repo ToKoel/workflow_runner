@@ -49,7 +49,8 @@ def process_data_workflow():
 
 @WorkflowRegistry.register(
     name="Process_Data_2",
-    description="Fetches data and compiles a status report"
+    description="Fetches data and compiles a status report",
+    data_cls=ProcessData
 )
 def process_data_workflow2():
     return [step_one, failing_step, step_two]
