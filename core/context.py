@@ -1,6 +1,7 @@
 from typing import Any, Optional, TypeVar, Type
 from core.settings import get_settings
 from contextvars import ContextVar
+from threading import Event
 
 current_context: ContextVar["WorkflowContext"] = ContextVar("current_context")
 
@@ -20,8 +21,26 @@ class WorkflowContext:
         self.output_table: Optional[WorkflowTable] = None
         self.success: bool = True
 
+        self._is_cancelled = Event()
+        self._resume_signal = Event()
+        self._resume_signal.set()
+        self.status_message = "Pending"
+
     def update_progress(self, step_name: str, percentage: float):
         pass
+
+    def request_pause(self):
+        self._resume_signal.clear()
+        self.status_message = "Paused"
+
+    def request_resume(self):
+        self._resume_signal.set()
+        self.status_message = "Running"
+
+    def request_cancel(self):
+        self._is_cancelled.set()
+        self._resume_signal.set()
+        self.status_message = "Cancelled"
 
 
 def get_data(data_type: Type[T]) -> T:

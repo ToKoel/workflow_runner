@@ -6,6 +6,7 @@ from rich.console import Console
 from ui.app import WorkflowTUI
 from core.engine import WorkflowEngine
 from core.settings import get_settings
+from core.context import WorkflowContext
 
 
 def main():
@@ -48,9 +49,10 @@ def main():
                     description=f"[yellow]{status:<35}[/]",
                     completed=percentage
                 )
+            ctx = WorkflowContext()
 
             ctx = engine.run_chain(
-                args.run, progress_callback=cli_progress_callback)
+                args.run, progress_callback=cli_progress_callback, ctx=ctx)
 
         if ctx.output_table:
             from rich.table import Table

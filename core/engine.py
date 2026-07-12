@@ -4,7 +4,7 @@ from core.context import WorkflowContext, current_context
 from core.settings import get_settings
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Callable
 
 logger = logging.getLogger("workflow engine")
 
@@ -23,17 +23,27 @@ class WorkflowEngine:
                 module = module_from_spec(spec)
                 spec.loader.exec_module(module)
 
+    def _check_state(self, ctx: WorkflowContext) -> bool:
+        if ctx._is_cancelled.is_set():
+            return False
+
+        if not ctx._resume_signal.is_set():
+            ctx.update_progress("Workflow Paused...", -1)
+            ctx._resume_signal.wait()
+
+        return not ctx._is_cancelled.is_set()
+
     def run_chain(self, workflow_names: list[str],
-                  progress_callback=None) -> WorkflowContext:
-        ctx = WorkflowContext()
+                  ctx: WorkflowContext,
+                  progress_callback: Callable | None = None) -> WorkflowContext:
         if progress_callback:
             ctx.update_progress = progress_callback
 
         token = current_context.set(ctx)
 
         try:
-
             total_workflows = len(workflow_names)
+            ctx.status_message = "Running"
 
             for w_idx, name in enumerate(workflow_names):
                 workflow = WorkflowRegistry.get_all().get(name)
@@ -49,14 +59,22 @@ class WorkflowEngine:
                     ctx.update_progress(f"Running {workflow.name}: {
                                         step.__name__}", overall_progress)
                     try:
+                        if not self._check_state(ctx):
+                            break
                         step()
                     except Exception as e:
                         logger.error(
                             f"Step {step.__name__} failed due to: {e}")
                         ctx.success = False
+                        ctx.status_message = "Failed"
+                        break
+                    if ctx._is_cancelled.is_set():
+                        ctx.status_message = "Cancelled"
                         break
 
-            ctx.update_progress(f"Finished {workflow.name}", 100.0)
+            if ctx.success and not ctx._is_cancelled.is_set():
+                ctx.status_message = "Completed"
+                ctx.update_progress(f"Finished {workflow.name}", 100.0)
 
         finally:
             current_context.reset(token)

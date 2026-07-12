@@ -15,6 +15,7 @@ from textual.events import Key
 from core.engine import WorkflowEngine
 from core.registry import WorkflowRegistry
 from core.settings import get_settings
+from core.context import WorkflowContext
 
 
 class WorkflowInput(Input):
@@ -38,6 +39,9 @@ class WorkflowTUI(App):
                         "Focus Settings", show=False),
                 Binding("[", "prev_tab", "Prev Tab"),
                 Binding("]", "next_tab", "Next Tab"),
+                Binding("r", "resume_workflow", "Resume"),
+                Binding("p", "pause_workflow", "Pause"),
+                Binding("c", "cancel_workflow", "Cancel"),
                 ]
     CSS = """
     #outer_grid { grid-size: 2; grid-columns: 1fr 3fr; height: 1fr; }
@@ -92,6 +96,7 @@ class WorkflowTUI(App):
         self.engine.load_plugins(Path(self.plugin_dir))
         self.tabs = ["tab-description", "tab-output"]
         self.current_tab_idx = 0
+        self.active_ctx: WorkflowContext | None = None
 
     def on_mount(self):
         wf_list = self.query_one("#wf_list", ListView)
@@ -233,6 +238,22 @@ class WorkflowTUI(App):
         self.current_tab_idx = (self.current_tab_idx - 1) % len(self.tabs)
         self.update_tab_ui()
 
+    def action_pause_workflow(self) -> None:
+        if self.active_ctx:
+            self.active_ctx.request_pause()
+            self.query_one("#progress_label", Label).update(
+                "[yellow]Status: Pausing")
+
+    def action_resume_workflow(self) -> None:
+        if self.active_ctx:
+            self.active_ctx.request_resume()
+
+    def action_cancel_workflow(self) -> None:
+        if self.active_ctx:
+            self.active_ctx.request_cancel()
+            self.query_one("#progress_label", Label).update(
+                "[red]Status: Cancelling[/]")
+
     @work(thread=True)
     async def continuous_timer_loop(self, start_time: float) -> None:
         time_label = self.query_one("#elapsed-time", Label)
@@ -275,31 +296,51 @@ class WorkflowTUI(App):
         p_bar = self.query_one("#progress_bar", ProgressBar)
         p_label = self.query_one("#progress_label", Label)
         table_widget = self.query_one("#result_table", DataTable)
-        self.current_tab_idx = 1
-        self.update_tab_ui()
+
+        def switch_tab():
+            self.current_tab_idx = 1
+            self.update_tab_ui()
+        self.call_from_thread(switch_tab)
 
         self.call_from_thread(table_widget.clear, columns=True)
 
         def progress_updater(status: str, percentage: float):
             p_label.update(status)
-            self.call_from_thread(
-                setattr, p_label, "renderable", f"Status: {status}")
-            self.call_from_thread(setattr, p_bar, "progress", percentage)
+            self.call_from_thread(p_label.update, f"Status: {status}")
+
+            def set_bar_progress():
+                p_bar.progess = percentage
+            self.call_from_thread(set_bar_progress)
 
         try:
+            ctx = WorkflowContext()
+
+            def expose_context():
+                self.active_ctx = ctx
+
+            self.call_from_thread(expose_context)
+
             ctx = self.engine.run_chain(
-                [workflow_name], progress_callback=progress_updater)
-            if not ctx.success:
-                p_label.update("[red]Workflow failed[/]")
+                [workflow_name], progress_callback=progress_updater, ctx=ctx)
+
+            if ctx._is_cancelled.is_set():
+                self.call_from_thread(
+                    p_label.update, "[yellow]Workflow cancelled[/]")
+            elif not ctx.success:
+                self.call_from_thread(
+                    p_label.update, "[red]Workflow failed[/]")
 
             if ctx.output_table:
-                self.call_from_thread(
-                    setattr, table_widget, "zebra_stripes", True)
-                self.call_from_thread(
-                    setattr, table_widget, "cursor_type", "row")
-                t = ctx.output_table
-                self.call_from_thread(table_widget.add_columns, *t.columns)
-                self.call_from_thread(table_widget.add_rows, t.rows)
-                table_widget.focus()
+                def render_table_results():
+                    table_widget.zebra_stripes = True
+                    table_widget.cursor_type = "row"
+                    table_widget.add_columns(*ctx.output_table.columns)
+                    table_widget.add_rows(ctx.output_table.rows)
+                    table_widget.focus()
+
+                self.call_from_thread(render_table_results)
         finally:
-            self.call_from_thread(setattr, self, "is_running", False)
+            def reset_running_state():
+                self.is_running = False
+                self.active_ctx = None
+            self.call_from_thread(reset_running_state)
