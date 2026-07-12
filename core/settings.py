@@ -13,19 +13,27 @@ class AppSettings(BaseModel):
     plugins_dir: Path = Field(default_factory=lambda: Path("./plugins"))
     ams_net_id: str = ""
 
-    def load_settings(self):
+    @classmethod
+    def load_settings(cls) -> "AppSettings":
         settings_file = Path.cwd() / Path(SETTINGS_FILE)
         if settings_file.exists():
-            settings_from_file = settings_file.read_text()
-            AppSettings.model_validate_json(settings_from_file)
+            try:
+                return cls.model_validate_json(settings_file.read_text())
+            except Exception:
+                return cls()
+        return cls()
 
     def save_settings(self):
         settings_file = Path.cwd() / Path(SETTINGS_FILE)
-        settings_file.write_text(self.settings.model_dump_json())
+        settings_file.write_text(self.model_dump_json(indent=4))
+
+
+def get_settings(force_reload: bool = False) -> AppSettings:
+    if force_reload:
+        _get_cached_settings.cache_clear()
+    return _get_cached_settings()
 
 
 @lru_cache()
-def get_settings() -> AppSettings:
-    settings = AppSettings()
-    settings.load_settings()
-    return settings
+def _get_cached_settings() -> AppSettings:
+    return AppSettings.load_settings()
