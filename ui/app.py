@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Button, ListView, ListItem, Label, Input, ProgressBar, DataTable, RichLog
+from textual.widgets import Header, Footer, Button, ListView, ListItem, Label, Input, ProgressBar, DataTable, RichLog, Static, ContentSwitcher
 from textual.containers import Horizontal, Vertical, Grid
 import time
 import asyncio
@@ -36,6 +36,8 @@ class WorkflowTUI(App):
                         "Focus Settings", show=False),
                 Binding("4", "focus_box('results')",
                         "Focus Settings", show=False),
+                Binding("[", "prev_tab", "Prev Tab"),
+                Binding("]", "next_tab", "Next Tab"),
                 ]
     CSS = """
     #outer_grid { grid-size: 2; grid-columns: 1fr 3fr; height: 1fr; }
@@ -88,6 +90,8 @@ class WorkflowTUI(App):
         self.plugin_dir = plugin_dir
         self.engine = WorkflowEngine()
         self.engine.load_plugins(Path(self.plugin_dir))
+        self.tabs = ["tab-description", "tab-output"]
+        self.current_tab_idx = 0
 
     def on_mount(self):
         wf_list = self.query_one("#wf_list", ListView)
@@ -99,6 +103,9 @@ class WorkflowTUI(App):
 
         log_window = self.query_one("#log_output", RichLog)
         log_window.border_title = "[3]-Logs"
+
+        output_box = self.query_one("#output_box", Vertical)
+        output_box.border_subtitle = "1 of 2"
 
         log_handler = TextualRichLogHandler(log_window, self)
 
@@ -134,14 +141,21 @@ class WorkflowTUI(App):
         table.add_rows(data_rows)
 
     def action_focus_box(self, location: str) -> None:
-        if location == "wf_list":
-            self.query_one("#wf_list", ListView).focus()
-        if location == "settings":
-            self.query_one("#project_dir", WorkflowInput).focus()
-        if location == "logs":
-            self.query_one("#log_output", RichLog).focus()
-        if location == "results":
-            self.query_one("#result_table", DataTable).focus()
+        match location:
+            case "wf_list":
+                self.query_one("#wf_list", ListView).focus()
+                self.query_one("#main-content",
+                               ContentSwitcher).current = "tab-description"
+            case "settings":
+                self.query_one("#project_dir", WorkflowInput).focus()
+            case "logs":
+                self.query_one("#log_output", RichLog).focus()
+                self.query_one("#main-content",
+                               ContentSwitcher).current = "tab-output"
+            case "results":
+                self.query_one("#result_table", DataTable).focus()
+                self.query_one("#main-content",
+                               ContentSwitcher).current = "tab-output"
 
     def save_settings(self):
         self.settings.project_dir = Path(
@@ -154,47 +168,70 @@ class WorkflowTUI(App):
         self.notify("Settings Saved!")
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        yield Grid(
+        return [
             Grid(
-                ListView(*[ListItem(Label(name), id=name)
-                           for name in WorkflowRegistry.get_all().keys()], id="wf_list",
-                         classes="box"),
-                Vertical(
-                    Label("Project Directory:", id="project_dir_label"),
-                    WorkflowInput(
-                        value=f"{get_settings().project_dir}", id="project_dir"),
-                    Label("Output Directory:"),
-                    WorkflowInput(
-                        value=f"{get_settings().output_dir}", id="output_dir"),
-                    Label("Target Ams Net Id:"),
-                    WorkflowInput(
-                        value=get_settings().ams_net_id, id="ams_net_id"),
-                    Button("Save Settings", variant="success",
-                           id="save_settings"),
-                    id="settings", classes="box"
-                ),
-                id="settings_grid"
-            ),
-            Vertical(
-                Vertical(
-                    Label("Progress:", id="progress_label"),
-                    Horizontal(
-                        ProgressBar(total=100, show_percentage=True, show_eta=False,
-                                    id="progress_bar"),
-                        Label("00:00", id="elapsed-time"),
-                        id="timer-layout"
+                Grid(
+                    ListView(*[ListItem(Label(name), id=name)
+                               for name in WorkflowRegistry.get_all().keys()], id="wf_list",
+                             classes="box"),
+                    Vertical(
+                        Label("Project Directory:", id="project_dir_label"),
+                        WorkflowInput(
+                            value=f"{get_settings().project_dir}", id="project_dir"),
+                        Label("Output Directory:"),
+                        WorkflowInput(
+                            value=f"{get_settings().output_dir}", id="output_dir"),
+                        Label("Target Ams Net Id:"),
+                        WorkflowInput(
+                            value=get_settings().ams_net_id, id="ams_net_id"),
+                        Button("Save Settings", variant="success",
+                               id="save_settings"),
+                        id="settings", classes="box"
                     ),
-                    id="progress_container"
+                    id="settings_grid"
                 ),
-                RichLog(id="log_output", highlight=True,
-                        markup=True, classes="box"),
-                DataTable(id="result_table", classes="box"),
-                id="output_box", classes="box"
+                Vertical(
+                    ContentSwitcher(
+                        Vertical(
+                            Vertical(
+                                Label("Progress:", id="progress_label"),
+                                Horizontal(
+                                    ProgressBar(total=100, show_percentage=True, show_eta=False,
+                                                id="progress_bar"),
+                                    Label("00:00", id="elapsed-time"),
+                                    id="timer-layout"
+                                ),
+                                id="progress_container"
+                            ),
+                            RichLog(id="log_output", highlight=True,
+                                    markup=True, classes="box"),
+                            DataTable(id="result_table", classes="box"),
+                            id="tab-output"
+                        ),
+                        Vertical(
+                            Static("Select a workflow to view details...",
+                                   id="detail-body"),
+                            id="tab-description"),
+                        id="main-content", initial="tab-description"),
+                    id="output_box", classes="box"
+                ),
+                id="outer_grid"
             ),
-            id="outer_grid"
-        )
-        yield Footer()
+            Footer()]
+
+    def update_tab_ui(self) -> None:
+        active_id = self.tabs[self.current_tab_idx]
+        self.query_one("#main-content", ContentSwitcher).current = active_id
+        output_box = self.query_one("#output_box", Vertical)
+        output_box.border_subtitle = f"{self.current_tab_idx+1} of 2"
+
+    def action_next_tab(self) -> None:
+        self.current_tab_idx = (self.current_tab_idx + 1) % len(self.tabs)
+        self.update_tab_ui()
+
+    def action_prev_tab(self) -> None:
+        self.current_tab_idx = (self.current_tab_idx - 1) % len(self.tabs)
+        self.update_tab_ui()
 
     @work(thread=True)
     async def continuous_timer_loop(self, start_time: float) -> None:
@@ -209,6 +246,22 @@ class WorkflowTUI(App):
         if event.button.id == "save_settings":
             self.save_settings()
 
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        self.current_tab_idx = 0
+        self.update_tab_ui()
+        if event.item and event.item.id:
+            workflows = WorkflowRegistry.get_all()
+            workflow = workflows[event.item.id]
+
+            steps_str = "\n".join(
+                f" {i+1}. {step.__name__}" for i, step in enumerate(workflow.steps))
+            formatted_details = (
+                f"{workflow.description}\n\n"
+                f"[bold cyan]Steps:[/]\n"
+                f"{steps_str}"
+            )
+            self.query_one("#detail-body", Static).update(formatted_details)
+
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         selected_item = event.item
         if selected_item and not self.is_running:
@@ -222,6 +275,8 @@ class WorkflowTUI(App):
         p_bar = self.query_one("#progress_bar", ProgressBar)
         p_label = self.query_one("#progress_label", Label)
         table_widget = self.query_one("#result_table", DataTable)
+        self.current_tab_idx = 1
+        self.update_tab_ui()
 
         self.call_from_thread(table_widget.clear, columns=True)
 
